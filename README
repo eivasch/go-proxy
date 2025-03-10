@@ -1,0 +1,72 @@
+# MinIO File Proxy
+
+A simple Go service that acts as a proxy for MinIO object storage, fetching files and serving them over HTTP with a local caching mechanism.
+
+## Features
+
+- **Caching**: Files fetched from MinIO are cached in memory to improve performance for repeated requests
+- **Simple API**: Exposes a clean HTTP API for retrieving files
+- **Health Check**: Includes a ping endpoint for health monitoring
+
+## Requirements
+
+- Go 1.23 or higher
+- MinIO server (included via Docker configuration)
+
+## Configuration
+
+Configuration is handled via environment variables in a `.env` file:
+
+```
+MINIO_ENDPOINT=127.0.0.1:9000
+MINIO_ACCESS_KEY=your_access_key
+MINIO_SECRET_KEY=your_secret_key
+MINIO_USE_SSL=false
+```
+
+## API Endpoints
+
+### GET /ping
+
+Health check endpoint that returns "Pong" if the service is running.
+
+### GET /get-file/{fileName}
+
+Retrieves a file with the given name from MinIO storage. If the file has been previously fetched, it will be served from the in-memory cache.
+
+## Running the Service
+
+### Local Development
+
+1. Start MinIO using Docker:
+
+```bash
+docker run -p 9000:9000 -p 9001:9001 bitnami/minio:latest
+```
+
+2. Create a bucket named "my-first-bucket" in the MinIO console (available at http://localhost:9001)
+
+3. Run the proxy service:
+
+```bash
+go run main.go minio.go
+```
+
+The service will be available at http://localhost:8080
+
+### Using Docker Compose
+
+You can also use Docker Compose to run both MinIO and the proxy service together.
+
+## Project Structure
+
+- `main.go` - HTTP server and request handlers
+- `minio.go` - MinIO client configuration and file retrieval functions
+- `Dockerfile` - Docker configuration for MinIO
+- `.env` - Environment variables for configuration
+- `go.mod` & `go.sum` - Go module files
+
+## Dependencies
+
+- [github.com/minio/minio-go/v7](https://github.com/minio/minio-go) - MinIO client for Go
+- [github.com/joho/godotenv](https://github.com/joho/godotenv) - For loading environment variables from .env file
