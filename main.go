@@ -5,35 +5,76 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path"
+	"strconv"
 
+	"github.com/joho/godotenv"
 )
-
-var FileCache = make(map[string][]byte)
 
 func ping(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Pong")
 }
 
-func getFile(w http.ResponseWriter, r *http.Request) {
-	fileName := r.PathValue("fileName")
+type FileHandler struct {
+	fileCache   *SafeCache
+	minioClient *MinioClient
+}
+
+func (fh *FileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	fileName := path.Clean(r.PathValue("fileName"))
 	fmt.Printf("Requested file name %s\n", fileName)
 
-	if _, ok := FileCache[fileName]; ok {
+	if file, ok := fh.fileCache.Get(fileName); ok {
 		fmt.Println("File found in cache")
-		w.Write(FileCache[fileName])
+		w.Write(file)
 		return
 	}
 	fmt.Println("File not found in cache")
 
-	file := GetMinioFile(fileName)
-	FileCache[fileName] = file
+	file, err := fh.minioClient.GetMinioFile(fileName)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+	fh.fileCache.Set(fileName, file)
 
-	io.Copy(w, bytes.NewReader(FileCache[fileName]))
+	io.Copy(w, bytes.NewReader(file))
 	w.Header().Set("Content-Type", "application/octet-stream")
 }
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("Warning: Error loading .env file:", err)
+	}
+	endpoint := os.Getenv("MINIO_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "127.0.0.1:9000"
+	}
+
+	accessKeyID := os.Getenv("MINIO_ACCESS_KEY")
+	secretAccessKey := os.Getenv("MINIO_SECRET_KEY")
+
+	useSSL, err := strconv.ParseBool(os.Getenv("MINIO_USE_SSL"))
+	if err != nil {
+		useSSL = false
+	}
+
+	mc := MinioClient{}
+	mc.initMinio(endpoint, accessKeyID, secretAccessKey, useSSL)
+
+	fileCache := SafeCache{
+		cache: make(map[string][]byte),
+	}
+
+	fileHandler := FileHandler{
+		fileCache:   &fileCache,
+		minioClient: &mc,
+	}
+	http.Handle("/get-file/{fileName}", &fileHandler)
 	http.HandleFunc("/ping", ping)
-	http.HandleFunc("/get-file/{fileName}", getFile)
 	http.ListenAndServe(":8080", nil)
 }
