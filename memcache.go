@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"sync"
+	"time"
 )
 
 type SafeCache struct {
@@ -17,7 +19,18 @@ func (sc *SafeCache) Get(key string) ([]byte, bool) {
 }
 
 func (sc *SafeCache) Set(key string, value []byte) {
+	defaultTTLSec := 5
+
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	sc.cache[key] = value
+
+	go func() {
+		time.Sleep(time.Duration(defaultTTLSec) * time.Second)
+		sc.mu.Lock()
+		defer sc.mu.Unlock()
+		delete(sc.cache, key)
+
+		fmt.Printf("Key %s deleted from cache\n", key)
+	}()
 }
