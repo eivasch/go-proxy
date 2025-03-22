@@ -1,4 +1,4 @@
-package main
+package minio
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ type MinioClient struct {
 	client *minio.Client
 }
 
-func (mc *MinioClient) initMinio(endpoint, accessKey, secretKey string, useSSL bool) {
+func (mc *MinioClient) InitMinio(endpoint, accessKey, secretKey string, useSSL bool) {
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: useSSL,
