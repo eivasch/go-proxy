@@ -4,7 +4,7 @@ A simple Go service that acts as a proxy for MinIO object storage, fetching file
 
 ## Features
 
-- **Caching**: Files fetched from MinIO are cached in memory to improve performance for repeated requests
+- **Caching**: Files fetched from MinIO are cached in memory with automatic expiration
 - **Simple API**: Exposes a clean HTTP API for retrieving files
 - **Health Check**: Includes a ping endpoint for health monitoring
 
@@ -49,7 +49,7 @@ docker run -p 9000:9000 -p 9001:9001 bitnami/minio:latest
 3. Run the proxy service:
 
 ```bash
-go run main.go minio.go
+go run cmd/main.go
 ```
 
 The service will be available at http://localhost:8080
@@ -60,11 +60,21 @@ You can also use Docker Compose to run both MinIO and the proxy service together
 
 ## Project Structure
 
-- `main.go` - HTTP server and request handlers
-- `minio.go` - MinIO client configuration and file retrieval functions
+- `cmd/main.go` - HTTP server setup and request handlers
+- `pkg/minio/minio.go` - MinIO client configuration and file retrieval functions
+- `pkg/memorycache/` - Thread-safe memory cache implementation
+  - `memcache.go` - Cache operations and cleanup logic
+  - `item.go` - Cache item representation
 - `Dockerfile` - Docker configuration for MinIO
 - `.env` - Environment variables for configuration
 - `go.mod` & `go.sum` - Go module files
+
+## Memory Cache Features
+
+The proxy includes a thread-safe memory cache implementation with:
+
+- Automatic expiration of cached items based on a configurable TTL
+- Last-accessed time tracking to keep frequently used items in cache
 
 ## Dependencies
 
