@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+// TestSafeCache_SetAndGet verifies the basic functionality of setting values in the cache
+// and retrieving them, as well as checking behavior when accessing non-existent keys.
 func TestSafeCache_SetAndGet(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -34,6 +36,8 @@ func TestSafeCache_SetAndGet(t *testing.T) {
 	}
 }
 
+// TestSafeCache_Expiration tests the cache's ability to identify and mark expired items,
+// ensuring they are properly flagged for deletion and no longer accessible after expiration.
 func TestSafeCache_Expiration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -47,10 +51,7 @@ func TestSafeCache_Expiration(t *testing.T) {
 	key := "expiring-key"
 	value := []byte("expiring-value")
 
-	// Set the key
 	cache.Set(key, value)
-
-	// Access the key directly to update lastAccessed time
 	item := cache.cache[key]
 
 	// Manually set lastAccessed to a time in the past
@@ -58,10 +59,8 @@ func TestSafeCache_Expiration(t *testing.T) {
 	item.lastAccessed = time.Now().Add(-time.Duration(ttl+1) * time.Second)
 	item.mu.Unlock()
 
-	// Trigger cleanup
 	cache.cleanupExpiredItems(ttl, deletedChan)
 
-	// Check if the key was marked as deleted
 	deleted := false
 	select {
 	case deletedKey := <-deletedChan:
@@ -69,14 +68,12 @@ func TestSafeCache_Expiration(t *testing.T) {
 			deleted = true
 		}
 	case <-time.After(time.Second):
-		// Allow a short wait to process
 	}
 
 	if !deleted {
 		t.Errorf("Key %q was not sent to delete channel after expiration", key)
 	}
 
-	// Check if the key is actually marked deleted
 	item.mu.RLock()
 	isDeleted := item.deleted
 	item.mu.RUnlock()
@@ -92,6 +89,8 @@ func TestSafeCache_Expiration(t *testing.T) {
 	}
 }
 
+// TestSafeCache_DeletedItems verifies that items marked as deleted are properly
+// handled and can no longer be retrieved from the cache.
 func TestSafeCache_DeletedItems(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -117,6 +116,8 @@ func TestSafeCache_DeletedItems(t *testing.T) {
 	}
 }
 
+// TestSafeCache_ConcurrentAccess ensures the cache handles concurrent operations
+// from multiple goroutines without race conditions or crashes.
 func TestSafeCache_ConcurrentAccess(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -159,11 +160,12 @@ func TestSafeCache_ConcurrentAccess(t *testing.T) {
 	// No crash means the test passes
 }
 
+// TestSafeCache_Cancellation verifies that the background cleanup goroutines
+// exit properly when the context is cancelled, preventing resource leaks.
 func TestSafeCache_Cancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cache := NewSafeCache(ctx)
 
-	// Start the background loop with a TTL
 	const ttlSeconds = 5
 	finished := make(chan bool)
 	go func() {
@@ -171,7 +173,6 @@ func TestSafeCache_Cancellation(t *testing.T) {
 		finished <- true
 	}()
 
-	// Cancel the context
 	cancel()
 
 	// Check if DeletingLoop exits
@@ -198,6 +199,8 @@ func TestSafeCache_Cancellation(t *testing.T) {
 	}
 }
 
+// TestSafeCache_UpdateExistingItem confirms that updating an existing cache entry
+// properly replaces the old value and doesn't create duplicate entries.
 func TestSafeCache_UpdateExistingItem(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -208,10 +211,8 @@ func TestSafeCache_UpdateExistingItem(t *testing.T) {
 	originalValue := []byte("original-value")
 	updatedValue := []byte("updated-value")
 
-	// Set original value
 	cache.Set(key, originalValue)
 
-	// Get the original value
 	gotOriginal, exists := cache.Get(key)
 	if !exists {
 		t.Fatalf("Get(%q) returned exists=false, want true", key)
@@ -220,10 +221,8 @@ func TestSafeCache_UpdateExistingItem(t *testing.T) {
 		t.Errorf("Got %q, want %q", gotOriginal, originalValue)
 	}
 
-	// Update the value
 	cache.Set(key, updatedValue)
 
-	// Get the updated value
 	gotUpdated, exists := cache.Get(key)
 	if !exists {
 		t.Fatalf("Get(%q) after update returned exists=false, want true", key)
@@ -232,7 +231,6 @@ func TestSafeCache_UpdateExistingItem(t *testing.T) {
 		t.Errorf("After update got %q, want %q", gotUpdated, updatedValue)
 	}
 
-	// Verify previous item was truly replaced
 	count := 0
 	for k := range cache.cache {
 		if k == key {
@@ -245,6 +243,8 @@ func TestSafeCache_UpdateExistingItem(t *testing.T) {
 	}
 }
 
+// TestSafeCache_ExtendTTLOnAccess verifies that accessing a cache item extends its
+// time-to-live by updating the lastAccessed timestamp, preventing premature expiration.
 func TestSafeCache_ExtendTTLOnAccess(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -256,10 +256,7 @@ func TestSafeCache_ExtendTTLOnAccess(t *testing.T) {
 	key := "access-extends-ttl"
 	value := []byte("test-value")
 
-	// Set the key
 	cache.Set(key, value)
-
-	// Get the item
 	item := cache.cache[key]
 
 	// Set lastAccessed to be almost expired
@@ -283,7 +280,6 @@ func TestSafeCache_ExtendTTLOnAccess(t *testing.T) {
 	// Run cleanup - item should not be deleted because lastAccessed was refreshed
 	cache.cleanupExpiredItems(ttl, deletedChan)
 
-	// Check item was not deleted
 	select {
 	case deletedKey := <-deletedChan:
 		t.Errorf("Key %q was incorrectly deleted despite recent access", deletedKey)
@@ -291,7 +287,6 @@ func TestSafeCache_ExtendTTLOnAccess(t *testing.T) {
 		// This is the expected path - no deletion
 	}
 
-	// Verify item is still accessible
 	_, exists := cache.Get(key)
 	if !exists {
 		t.Errorf("Item was not accessible after cleanup, despite recent access")

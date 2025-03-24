@@ -2,11 +2,10 @@ package memorycache
 
 import (
 	"context"
-	"fmt" 
+	"fmt"
 	"sync"
 	"time"
 )
-
 
 type SafeCache struct {
 	mu    sync.RWMutex
@@ -36,7 +35,6 @@ func (sc *SafeCache) Get(key string) ([]byte, bool) {
 		return nil, false
 	}
 
-	// Update lastAccessed under the same read lock
 	item.lastAccessed = time.Now()
 	return item.Value, true
 }
@@ -74,9 +72,7 @@ func (sc *SafeCache) cleanupExpiredItems(ttlSec int, deletedItemsChan chan<- str
 	defer sc.mu.RUnlock()
 
 	now := time.Now()
-	// Check each key individually to minimize lock contention
 	for key, item := range sc.cache {
-		// Process this key
 		select {
 		case <-sc.ctx.Done():
 			return

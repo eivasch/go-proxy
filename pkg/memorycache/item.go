@@ -9,14 +9,14 @@ type item struct {
 	Value        []byte
 	deleted      bool
 	lastAccessed time.Time
-	mu 		 sync.RWMutex
+	mu           sync.RWMutex
 }
 
 func newItem(value []byte) *item {
 	return &item{
 		Value:        value,
 		lastAccessed: time.Now(),
-		deleted: 	false,
+		deleted:      false,
 	}
 }
 

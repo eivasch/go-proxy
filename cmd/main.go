@@ -96,7 +96,6 @@ func main() {
 		minioClient: &mc,
 	}
 
-	// Server setup
 	server := &http.Server{
 		Addr: ":8080",
 	}
@@ -104,7 +103,6 @@ func main() {
 	http.Handle("/get-file/{fileName}", &fileHandler)
 	http.HandleFunc("/ping", ping)
 
-	// Start server in a goroutine so it doesn't block
 	go func() {
 		fmt.Println("Server started on :8080")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -119,7 +117,6 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
-	// Shutdown the server
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		fmt.Printf("Server shutdown error: %s\n", err)
 	} else {
