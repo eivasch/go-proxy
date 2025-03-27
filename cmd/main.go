@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,18 +32,18 @@ type FileHandler struct {
 func (fh *FileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	fileName := path.Clean(r.PathValue("fileName"))
-	fmt.Printf("Requested file name %s\n", fileName)
+	log.Printf("Requested file name %s\n", fileName)
 
 	if file, ok := fh.fileCache.Get(fileName); ok {
-		fmt.Println("File found in cache")
+		log.Println("File found in cache")
 		w.Write(file)
 		return
 	}
-	fmt.Println("File not found in cache")
+	log.Println("File not found in cache")
 
 	file, err := fh.minioClient.GetMinioFile(fileName)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
@@ -58,19 +59,21 @@ func main() {
 	defer cancel()
 
 	// Set up signal handling
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
+	signalContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
 	// Go routine to handle shutdown signals
 	go func() {
-		sig := <-signalChan
-		fmt.Printf("Received signal: %s, shutting down gracefully...\n", sig)
+		<-signalContext.Done()
+		log.Printf("Received shutdown signal, canceling context...\n")
 		cancel()
 	}()
 
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Warning: Error loading .env file:", err)
+		log.Println("Warning: Error loading .env file:", err)
 	}
 	endpoint := os.Getenv("MINIO_ENDPOINT")
 	if endpoint == "" {
@@ -88,8 +91,8 @@ func main() {
 	mc := minio.MinioClient{}
 	mc.InitMinio(endpoint, accessKeyID, secretAccessKey, useSSL)
 
-	fileCache := memorycache.NewSafeCache(ctx)
-	go fileCache.DeletingLoop(5)
+	fileCache := memorycache.NewSafeCache()
+	go fileCache.DeletingLoop(5, ctx)
 
 	fileHandler := FileHandler{
 		fileCache:   fileCache,
@@ -104,9 +107,9 @@ func main() {
 	http.HandleFunc("/ping", ping)
 
 	go func() {
-		fmt.Println("Server started on :8080")
+		log.Println("Server started on :8080")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("Server error: %s\n", err)
+			log.Printf("Server error: %s\n", err)
 		}
 	}()
 
@@ -118,8 +121,9 @@ func main() {
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		fmt.Printf("Server shutdown error: %s\n", err)
-	} else {
-		fmt.Println("Server gracefully stopped")
+		log.Printf("Server shutdown error: %s\n", err)
+		return
 	}
+	log.Println("Server gracefully stopped")
+
 }

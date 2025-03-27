@@ -9,10 +9,7 @@ import (
 // TestSafeCache_SetAndGet verifies the basic functionality of setting values in the cache
 // and retrieving them, as well as checking behavior when accessing non-existent keys.
 func TestSafeCache_SetAndGet(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cache := NewSafeCache(ctx)
+	cache := NewSafeCache()
 
 	key := "test-key"
 	value := []byte("test-value")
@@ -42,7 +39,7 @@ func TestSafeCache_Expiration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cache := NewSafeCache(ctx)
+	cache := NewSafeCache()
 
 	// Set a short TTL for testing
 	ttl := 2 // seconds
@@ -59,7 +56,7 @@ func TestSafeCache_Expiration(t *testing.T) {
 	item.lastAccessed = time.Now().Add(-time.Duration(ttl+1) * time.Second)
 	item.mu.Unlock()
 
-	cache.cleanupExpiredItems(ttl, deletedChan)
+	cache.cleanupExpiredItems(ttl, deletedChan, ctx)
 
 	deleted := false
 	select {
@@ -92,10 +89,7 @@ func TestSafeCache_Expiration(t *testing.T) {
 // TestSafeCache_DeletedItems verifies that items marked as deleted are properly
 // handled and can no longer be retrieved from the cache.
 func TestSafeCache_DeletedItems(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cache := NewSafeCache(ctx)
+	cache := NewSafeCache()
 	key := "to-delete"
 	value := []byte("delete-me")
 
@@ -122,11 +116,11 @@ func TestSafeCache_ConcurrentAccess(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cache := NewSafeCache(ctx)
+	cache := NewSafeCache()
 
 	// Start the background cleanup with a TTL
 	const ttlSeconds = 5
-	go cache.DeletingLoop(ttlSeconds)
+	go cache.DeletingLoop(ttlSeconds, ctx)
 
 	const concurrency = 10
 	const operations = 100
@@ -164,12 +158,12 @@ func TestSafeCache_ConcurrentAccess(t *testing.T) {
 // exit properly when the context is cancelled, preventing resource leaks.
 func TestSafeCache_Cancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cache := NewSafeCache(ctx)
+	cache := NewSafeCache()
 
 	const ttlSeconds = 5
 	finished := make(chan bool)
 	go func() {
-		cache.DeletingLoop(ttlSeconds)
+		cache.DeletingLoop(ttlSeconds, ctx)
 		finished <- true
 	}()
 
@@ -187,7 +181,7 @@ func TestSafeCache_Cancellation(t *testing.T) {
 	deletedChan := make(chan string)
 	cleanupDone := make(chan bool)
 	go func() {
-		cache.cleanupExpiredItems(ttlSeconds, deletedChan)
+		cache.cleanupExpiredItems(ttlSeconds, deletedChan, ctx)
 		cleanupDone <- true
 	}()
 
@@ -202,10 +196,7 @@ func TestSafeCache_Cancellation(t *testing.T) {
 // TestSafeCache_UpdateExistingItem confirms that updating an existing cache entry
 // properly replaces the old value and doesn't create duplicate entries.
 func TestSafeCache_UpdateExistingItem(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cache := NewSafeCache(ctx)
+	cache := NewSafeCache()
 
 	key := "update-test"
 	originalValue := []byte("original-value")
@@ -249,7 +240,7 @@ func TestSafeCache_ExtendTTLOnAccess(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cache := NewSafeCache(ctx)
+	cache := NewSafeCache()
 	ttl := 2 // seconds
 	deletedChan := make(chan string, 10)
 
@@ -278,7 +269,7 @@ func TestSafeCache_ExtendTTLOnAccess(t *testing.T) {
 	}
 
 	// Run cleanup - item should not be deleted because lastAccessed was refreshed
-	cache.cleanupExpiredItems(ttl, deletedChan)
+	cache.cleanupExpiredItems(ttl, deletedChan, ctx)
 
 	select {
 	case deletedKey := <-deletedChan:

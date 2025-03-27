@@ -2,7 +2,7 @@ package memorycache
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"sync"
 	"time"
 )
@@ -10,13 +10,11 @@ import (
 type SafeCache struct {
 	mu    sync.RWMutex
 	cache map[string]*item
-	ctx   context.Context
 }
 
-func NewSafeCache(ctx context.Context) *SafeCache {
+func NewSafeCache() *SafeCache {
 	return &SafeCache{
 		cache: make(map[string]*item),
-		ctx:   ctx,
 	}
 }
 
@@ -29,8 +27,8 @@ func (sc *SafeCache) Get(key string) ([]byte, bool) {
 		return nil, false
 	}
 
-	item.mu.RLock()
-	defer item.mu.RUnlock()
+	item.mu.Lock()
+	defer item.mu.Unlock()
 	if item.deleted {
 		return nil, false
 	}
@@ -45,42 +43,45 @@ func (sc *SafeCache) Set(key string, value []byte) {
 	sc.cache[key] = newItem(value)
 }
 
-func (sc *SafeCache) DeletingLoop(defaultTTLSec int) {
-	ticker := time.NewTicker(time.Duration(defaultTTLSec) * time.Second)
-	defer ticker.Stop()
-
+func (sc *SafeCache) DeletingLoop(defaultTTLSec int, ctx context.Context) {
 	deletedItemsChan := make(chan string)
-	defer close(deletedItemsChan)
 
-	for {
-		select {
-		case <-sc.ctx.Done():
-			return
-		case key := <-deletedItemsChan:
-			sc.mu.Lock()
-			delete(sc.cache, key)
-			sc.mu.Unlock()
-		case <-ticker.C:
-			// todo: don't start processing if a previous run is still in progress
-			go sc.cleanupExpiredItems(defaultTTLSec, deletedItemsChan)
+	go func() {
+		defer close(deletedItemsChan)
+		ticker := time.NewTicker(time.Duration(defaultTTLSec) * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sc.cleanupExpiredItems(defaultTTLSec, deletedItemsChan, ctx)
+			}
 		}
+	}()
+
+	for key := range deletedItemsChan {
+		sc.mu.Lock()
+		delete(sc.cache, key)
+		sc.mu.Unlock()
 	}
 }
 
-func (sc *SafeCache) cleanupExpiredItems(ttlSec int, deletedItemsChan chan<- string) {
+func (sc *SafeCache) cleanupExpiredItems(ttlSec int, deletedItemsChan chan<- string, ctx context.Context) {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
 
 	now := time.Now()
 	for key, item := range sc.cache {
 		select {
-		case <-sc.ctx.Done():
+		case <-ctx.Done():
 			return
 		default:
 		}
 
 		if !item.deleted && now.Sub(item.lastAccessed) > time.Duration(ttlSec)*time.Second {
-			fmt.Printf("Key %s expired\n", key)
+			log.Printf("Key %s expired\n", key)
 			item.safeDelete()
 			deletedItemsChan <- key
 		}
